@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>AI Universe — карта нейросервисов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #05060c;
+    --panel: rgba(14,17,28,0.62);
+    --panel-border: rgba(255,255,255,0.10);
+    --text: #e7eaf5;
+    --text-dim: #8b92ab;
+    --accent: #5AA7FF;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0; width:100%; height:100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #canvas-wrap{ position:fixed; inset:0; }
+  canvas{ display:block; touch-action:none; }
+
+  .mono{ font-family:'JetBrains Mono', monospace; }
+
+  /* ---------- top bar ---------- */
+  #topbar{
+    position:fixed; top:0; left:0; right:0;
+    display:flex; flex-direction:column; align-items:center;
+    padding: 16px 16px 0;
+    pointer-events:none;
+    z-index: 20;
+  }
+  #title{
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+    pointer-events:none;
+    font-family:'JetBrains Mono', monospace;
+  }
+  #title b{ color:var(--text); font-weight:500; }
+
+  #search-wrap{
+    position:relative;
+    width: min(420px, 88vw);
+    pointer-events:auto;
+  }
+  #search{
+    width:100%;
+    padding: 11px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'Space Grotesk', sans-serif;
+    outline:none;
+    transition: border-color .2s ease;
+  }
+  #search::placeholder{ color: var(--text-dim); }
+  #search:focus{ border-color: rgba(90,167,255,0.55); }
+
+  #suggestions{
+    position:absolute; left:0; right:0; top: calc(100% + 8px);
+    background: rgba(10,12,20,0.88);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    backdrop-filter: blur(14px);
+    overflow:hidden;
+    display:none;
+    max-height: 260px;
+    overflow-y:auto;
+  }
+  #suggestions.show{ display:block; }
+  .sugg-item{
+    display:flex; align-items:center; gap:10px;
+    padding: 9px 14px;
+    font-size: 13px;
+    cursor:pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .sugg-item:last-child{ border-bottom:none; }
+  .sugg-item:hover{ background: rgba(255,255,255,0.06); }
+  .dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+  .sugg-name{ color:var(--text); }
+  .sugg-cat{ color:var(--text-dim); font-size:11px; margin-left:auto; font-family:'JetBrains Mono', monospace; }
+
+  /* ---------- legend ---------- */
+  #legend{
+    position:fixed; left:16px; bottom:16px;
+    display:flex; flex-direction:column; gap:6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 12px;
+    backdrop-filter: blur(14px);
+    z-index: 20;
+    max-width: 168px;
+  }
+  .legend-item{
+    display:flex; align-items:center; gap:8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor:pointer;
+    padding: 3px 4px;
+    border-radius: 8px;
+    user-select:none;
+    transition: background .15s ease, color .15s ease;
+  }
+  .legend-item:hover{ background: rgba(255,255,255,0.06); color:var(--text); }
+  .legend-item.active{ color: var(--text); background: rgba(255,255,255,0.08); }
+  .legend-swatch{ width:9px; height:9px; border-radius:50%; flex:none; box-shadow: 0 0 8px currentColor; }
+  .legend-count{ margin-left:auto; font-family:'JetBrains Mono', monospace; font-size:10px; opacity:0.7; }
+
+  /* ---------- hint ---------- */
+  #hint{
+    position:fixed; right:16px; bottom:16px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    text-align:right;
+    line-height:1.6;
+    z-index:20;
+    pointer-events:none;
+    opacity:0.75;
+  }
+
+  /* ---------- подписи звёзд, как в атласах ---------- */
+  #label-layer{
+    position:fixed; inset:0;
+    pointer-events:none;
+    z-index: 6;
+    overflow:hidden;
+  }
+  .star-label{
+    position:absolute; top:0; left:0;
+    white-space:nowrap;
+    font-family:'JetBrains Mono', monospace;
+    font-weight:300;
+    letter-spacing:0.015em;
+    color: rgba(220,226,245,0.5);
+    text-shadow: 0 0 5px rgba(0,0,0,0.85), 0 0 1px rgba(0,0,0,0.6);
+    will-change: transform, opacity;
+    transition: color .15s ease;
+    opacity:0;
+  }
+  .star-label .lbl-cat{
+    display:none;
+    margin-left:7px;
+    font-size:0.82em;
+    color: rgba(160,170,200,0.85);
+  }
+  .star-label.active{
+    color:#ffffff;
+    font-weight:500;
+    z-index:1;
+  }
+  .star-label.active .lbl-cat{ display:inline; }
+
+  /* ---------- info panel ---------- */
+  #panel{
+    position:fixed; top:0; right:0; height:100%;
+    width: 320px; max-width: 86vw;
+    background: rgba(9,11,19,0.78);
+    border-left: 1px solid var(--panel-border);
+    backdrop-filter: blur(18px);
+    transform: translateX(100%);
+    transition: transform .38s cubic-bezier(.2,.8,.2,1);
+    z-index: 25;
+    padding: 26px 22px;
+    overflow-y:auto;
+  }
+  #panel.show{ transform: translateX(0); }
+  #panel-close{
+    position:absolute; top:18px; right:18px;
+    width:30px; height:30px; border-radius:50%;
+    border:1px solid var(--panel-border);
+    background:rgba(255,255,255,0.04);
+    color:var(--text-dim);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    font-size:16px;
+    transition: color .15s, background .15s;
+  }
+  #panel-close:hover{ color:var(--text); background:rgba(255,255,255,0.1); }
+  #panel-cat-badge{
+    display:inline-flex; align-items:center; gap:7px;
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing:0.06em;
+    text-transform:uppercase;
+    color: var(--text-dim);
+    margin-top: 34px;
+  }
+  #panel-cat-badge .legend-swatch{ width:8px; height:8px; }
+  #panel-name{
+    font-size: 26px;
+    font-weight:600;
+    margin: 10px 0 18px;
+    line-height:1.15;
+  }
+  .panel-section-label{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    color: var(--text-dim);
+    margin: 18px 0 8px;
+  }
+  #panel-tags{ display:flex; flex-wrap:wrap; gap:6px; }
+  .tag-chip{
+    font-family:'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    color: var(--text-dim);
+  }
+  #panel-pop-bar{
+    height:5px; border-radius:4px; background: rgba(255,255,255,0.08);
+    overflow:hidden; margin-top:6px;
+  }
+  #panel-pop-fill{ height:100%; border-radius:4px; }
+  #panel-neighbors{ display:flex; flex-direction:column; gap:5px; }
+  .neighbor-item{
+    display:flex; align-items:center; gap:8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    cursor:pointer;
+    padding: 6px 8px;
+    border-radius:8px;
+    transition: background .15s, color .15s;
+  }
+  .neighbor-item:hover{ background: rgba(255,255,255,0.06); color:var(--text); }
+
+  /* ---------- loading ---------- */
+  #loading{
+    position:fixed; inset:0; background: var(--bg);
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:14px;
+    z-index: 100;
+    transition: opacity .5s ease;
+  }
+  #loading .ring{
+    width:34px; height:34px; border-radius:50%;
+    border: 2px solid rgba(255,255,255,0.12);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  #loading .label{ font-family:'JetBrains Mono', monospace; font-size:11px; color:var(--text-dim); letter-spacing:0.1em; text-transform:uppercase; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  @media (max-width: 640px){
+    #legend{ display:none; }
+    #hint{ display:none; }
+    #panel{ width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading"><div class="ring"></div><div class="label">Загружаю вселенную</div></div>
+
+<div id="canvas-wrap"></div>
+
+<div id="topbar">
+  <div id="title">AI Universe <b>· карта нейросервисов</b></div>
+  <div id="search-wrap">
+    <input id="search" class="mono" type="text" placeholder="Найти нейронку…" autocomplete="off" />
+    <div id="suggestions"></div>
+  </div>
+</div>
+
+<div id="legend"></div>
+
+<div id="hint">ЛКМ — вращение&nbsp;&nbsp;·&nbsp;&nbsp;колесо — зум<br/>клик по звезде — карточка</div>
+
+<div id="label-layer"></div>
+
+<div id="panel">
+  <div id="panel-close">✕</div>
+  <div id="panel-cat-badge"><span class="legend-swatch"></span><span id="panel-cat-text"></span></div>
+  <div id="panel-name"></div>
+  <div class="panel-section-label">Популярность</div>
+  <div id="panel-pop-bar"><div id="panel-pop-fill"></div></div>
+  <div class="panel-section-label">Теги</div>
+  <div id="panel-tags"></div>
+  <div class="panel-section-label">Похожие нейронки</div>
+  <div id="panel-neighbors"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* ============================================================
+   1. ДАННЫЕ
+   ============================================================ */
+
+const CATEGORIES = {
+  chat:         { label: "Чат-ассистенты",     color: 0x5AA7FF },
+  text:         { label: "Текст и письмо",      color: 0x44FF88 },
+  image:        { label: "Изображения",         color: 0x32D6FF },
+  video:        { label: "Видео",                color: 0xFF3E91 },
+  audio:        { label: "Аудио и голос",       color: 0xFFA630 },
+  code:         { label: "Код",                  color: 0x4DFFE0 },
+  research:     { label: "Исследования",        color: 0xB16DFF },
+  productivity: { label: "Продуктивность",      color: 0xFF8A4F },
+  marketing:    { label: "Маркетинг и соцсети", color: 0xFFD84C },
+  design:       { label: "Дизайн и бренд",      color: 0xFF70C0 },
+  music:        { label: "Музыка",               color: 0xFF3B3B },
+};
+
+// name, category, tags, popularity(1-100)
+const RAW = [
+  ["ChatGPT","chat",["assistant","general","coding"],98],
+  ["Claude","chat",["assistant","reasoning","coding"],90],
+  ["Gemini","chat",["assistant","multimodal","coding"],88],
+  ["Microsoft Copilot","chat",["assistant","office","coding"],80],
+  ["Grok","chat",["assistant","web","coding"],72],
+  ["Meta AI","chat",["assistant","social"],70],
+  ["Mistral AI","chat",["assistant","open","coding"],60],
+  ["DeepSeek","chat",["assistant","reasoning","coding"],76],
+  ["Qwen","chat",["assistant","reasoning","coding"],58],
+  ["Llama","chat",["assistant","open","coding"],62],
+  ["GigaChat","chat",["assistant","general"],50],
+  ["YandexGPT","chat",["assistant","general"],45],
+
+  ["Perplexity","research",["search","assistant"],82],
+  ["ChatPDF","research",["pdf","docs","productivity"],55],
+  ["PDF AI","research",["pdf","docs","productivity"],45],
+  ["DocuAsk","research",["pdf","docs","productivity"],35],
+  ["Humata","research",["pdf","docs","productivity"],40],
+  ["Elicit","research",["science","papers"],50],
+  ["Consensus","research",["papers","science"],48],
+  ["Connected Papers","research",["papers","discovery"],42],
+  ["SciSpace","research",["papers","science"],44],
+  ["ResearchRabbit","research",["discovery","papers"],38],
+  ["ChatwithPDF","research",["pdf","docs"],34],
+  ["NotebookLM","research",["docs","research","productivity"],58],
+
+  ["Midjourney","image",["art","generation","design"],92],
+  ["Stable Diffusion","image",["open","generation","design"],85],
+  ["Leonardo AI","image",["design","generation"],65],
+  ["Ideogram","image",["text-in-image","generation","design"],60],
+  ["Flux","image",["open","generation"],68],
+  ["GPT Image","image",["generation","editing"],72],
+  ["Nano Banana Pro","image",["generation","editing"],65],
+  ["Kandinsky","image",["generation","design"],48],
+  ["Шедеврум","image",["generation"],40],
+
+  ["Runway","video",["generation","editing"],75],
+  ["Sora 2","video",["generation","cinematic"],80],
+  ["Kling AI","video",["generation","cinematic"],70],
+  ["Google Veo","video",["generation","cinematic"],72],
+  ["Pika","video",["generation"],55],
+  ["Synthesia","video",["avatar","generation"],60],
+  ["Descript","video",["editing","transcription"],58],
+  ["Vidyo.ai","video",["editing","clips","marketing"],40],
+  ["Pictory","video",["editing","auto","marketing"],50],
+  ["CapCut AI","video",["editing","mobile","marketing"],78],
+  ["Filmora AI","video",["editing"],55],
+  ["Lumen5","video",["editing","marketing"],42],
+
+  ["Otter.ai","audio",["transcription","meetings"],60],
+  ["Lovo AI","audio",["tts","voice"],35],
+  ["ElevenLabs","audio",["voice","tts"],80],
+  ["Murf AI","audio",["tts","voice"],50],
+  ["Speechify","audio",["tts","reading"],55],
+  ["Fireflies.ai","audio",["meetings","transcription","productivity"],50],
+  ["tl;dv","audio",["meetings","transcription","productivity"],45],
+  ["Fathom","audio",["meetings","transcription","productivity"],42],
+  ["Krisp","audio",["noise-cancel","calls"],48],
+  ["AudioPen","audio",["voice-notes"],30],
+  ["Sonix","audio",["transcription"],38],
+
+  ["GitHub Copilot","code",["coding","autocomplete"],88],
+  ["Replit Agent","code",["coding","deploy","agent"],65],
+  ["v0","code",["coding","agent","deploy"],58],
+  ["Bolt.new","code",["coding","agent","deploy"],55],
+  ["Lovable","code",["coding","agent","deploy"],52],
+  ["GigaCode","code",["coding","autocomplete"],30],
+  ["Codeium","code",["coding","autocomplete"],55],
+  ["Tabnine","code",["coding","autocomplete"],45],
+  ["Amazon CodeWhisperer","code",["coding","autocomplete"],48],
+  ["Cursor","code",["coding","agent"],82],
+  ["Blackbox AI","code",["coding","search"],40],
+  ["Phind","code",["coding","search"],46],
+  ["Devika AI","code",["coding","agent"],36],
+
+  ["Notion AI","productivity",["notes","docs"],75],
+  ["Webpilot","productivity",["browsing","agent"],30],
+  ["Browse AI","productivity",["browsing","automation"],34],
+  ["Zapier AI","productivity",["automation"],60],
+  ["Make (Integromat)","productivity",["automation"],54],
+  ["Trello AI","productivity",["tasks"],40],
+  ["Asana AI","productivity",["tasks","planning"],45],
+  ["ClickUp AI","productivity",["tasks","docs"],50],
+  ["Motion","productivity",["scheduling"],38],
+  ["Reclaim AI","productivity",["scheduling"],34],
+
+  ["Jasper","text",["marketing","writing"],65],
+  ["Copy.ai","text",["marketing","writing"],58],
+  ["Writesonic","text",["seo","writing"],50],
+  ["Anyword","text",["marketing","writing"],40],
+  ["Rytr","text",["writing"],36],
+  ["Wordtune","text",["rewriting","grammar"],46],
+  ["Grammarly","text",["grammar","writing"],88],
+  ["QuillBot","text",["paraphrasing","grammar"],55],
+  ["LanguageTool","text",["grammar"],45],
+  ["ProWritingAid","text",["grammar","writing"],40],
+  ["Hemingway Editor","text",["readability"],38],
+
+  ["Surfer SEO","marketing",["seo","content","writing"],55],
+  ["Frase","marketing",["seo","content","writing"],44],
+  ["MarketMuse","marketing",["seo","content"],38],
+  ["Clearscope","marketing",["seo","content"],40],
+  ["Outranking","marketing",["seo","content"],32],
+  ["AdCreative.ai","marketing",["ads","design"],44],
+  ["Predis.ai","marketing",["social","ads"],33],
+  ["Ocoya","marketing",["social","scheduling"],30],
+  ["Buffer AI","marketing",["social","scheduling"],55],
+  ["Hootsuite AI","marketing",["social","scheduling"],50],
+  ["SocialBee","marketing",["social","scheduling"],33],
+  ["Flick","marketing",["social","hashtags"],30],
+  ["Later AI","marketing",["social","scheduling"],44],
+  ["Feedbird","marketing",["social","scheduling"],26],
+  ["Repurpose.io","marketing",["content","repurpose"],32],
+
+  ["Designs.ai","design",["branding","generation"],38],
+  ["Canva AI","design",["design","branding","generation"],70],
+  ["Looka","design",["logo","branding"],44],
+  ["Brandmark","design",["logo","branding"],38],
+  ["Simplified","design",["design","marketing"],40],
+
+  ["Suno AI","music",["music","generation"],75],
+  ["Udio","music",["music","generation"],55],
+];
+
+const DATA = RAW.map(([name, category, tags, popularity], i) => ({
+  id: i, name, category, tags, popularity,
+}));
+
+/* ============================================================
+   2. ГЕНЕРАЦИЯ ПОЗИЦИЙ (без физ. движка)
+
+   Три шага:
+   а) у каждой категории — своё «гнездо» в сфере. Радиус гнезда
+      зависит от того, насколько категория связана с другими по
+      смыслу (общие теги-способности): чем больше у категории
+      «мостов» наружу — тем ближе её гнездо к центру. Так центр
+      заполняют универсальные категории (чат, код, продуктивность,
+      исследования), а нишевые (видео, аудио, дизайн) оказываются
+      ближе к краю — но не на тонкой оболочке, а во всём объёме
+      своего гнезда (равномерно по шару, не только по поверхности).
+   б) «мостовая» подвижка: если у нейронки есть способности из
+      чужой категории (например, чат-модель умеет кодить как
+      Cursor), она один раз подтягивается к смысловому центру этих
+      чужих нейронок — поэтому похожие функционально объекты из
+      разных категорий оказываются ближе друг к другу.
+   в) лёгкая релаксация, чтобы звёзды не слипались.
+   ============================================================ */
+
+const FILL_R = 106;                // здесь реально лежат звёзды-нейронки (раскладка не меняется)
+const SPHERE_R = FILL_R + 8;       // стеклянная оболочка — плотно облегает облако звёзд
+
+function seededRandom(seed){
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return function(){
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+const rand = seededRandom(1337);
+
+function fibonacciDirs(n){
+  const dirs = [];
+  const golden = Math.PI * (1 + Math.sqrt(5));
+  for(let i=0;i<n;i++){
+    const phi = Math.acos(1 - 2*(i+0.5)/n);
+    const theta = golden * (i+0.5);
+    dirs.push(new THREE.Vector3(
+      Math.sin(phi)*Math.cos(theta),
+      Math.sin(phi)*Math.sin(theta),
+      Math.cos(phi)
+    ));
+  }
+  return dirs;
+}
+
+// равномерная случайная точка ВНУТРИ шара радиуса R (не на оболочке)
+function randomInBall(R){
+  const r = R * Math.cbrt(rand());
+  const theta = rand()*Math.PI*2;
+  const phi = Math.acos(2*rand()-1);
+  return new THREE.Vector3(
+    r*Math.sin(phi)*Math.cos(theta),
+    r*Math.sin(phi)*Math.sin(theta),
+    r*Math.cos(phi)
+  );
+}
+
+const catKeys = Object.keys(CATEGORIES);
+
+// сколько у каждой категории общих тегов с другими категориями —
+// мера её «универсальности» (чем выше — тем ближе к центру)
+function categoryCrossScore(cat){
+  let score = 0;
+  DATA.forEach(a=>{
+    if(a.category !== cat) return;
+    DATA.forEach(b=>{
+      if(b.category === cat) return;
+      score += a.tags.filter(t=>b.tags.includes(t)).length;
+    });
+  });
+  return score;
+}
+
+const crossScores = {};
+catKeys.forEach(k=> crossScores[k] = categoryCrossScore(k));
+const rankedCats = [...catKeys].sort((a,b)=> crossScores[b]-crossScores[a]);
+
+const R_MIN = 16, R_MAX = 95;
+const catRadius = {};
+rankedCats.forEach((k,i)=>{
+  const t = rankedCats.length>1 ? i/(rankedCats.length-1) : 0;
+  catRadius[k] = R_MIN + (R_MAX-R_MIN)*t;
+});
+
+const catDirs = {};
+fibonacciDirs(catKeys.length).forEach((d,i)=> catDirs[catKeys[i]] = d);
+
+function generatePositions(data){
+  // а) гнёзда категорий, точки равномерно внутри объёма гнезда
+  const pos = data.map((d)=>{
+    const center = catDirs[d.category].clone().multiplyScalar(catRadius[d.category]);
+    const spread = 13 + catRadius[d.category]*0.34;
+    return center.add(randomInBall(spread));
+  });
+
+  // б) мостовая подвижка — один раз тянем к смысловым «соседям» из чужих категорий
+  const n = data.length;
+  const targets = new Array(n).fill(null);
+  for(let i=0;i<n;i++){
+    let wSum = 0;
+    const acc = new THREE.Vector3();
+    for(let j=0;j<n;j++){
+      if(j===i || data[j].category===data[i].category) continue;
+      const shared = data[i].tags.filter(t=>data[j].tags.includes(t)).length;
+      if(shared<=0) continue;
+      acc.addScaledVector(pos[j], shared);
+      wSum += shared;
+    }
+    if(wSum>0){ acc.multiplyScalar(1/wSum); targets[i] = acc; }
+  }
+  const bridgeCoeff = 0.14;
+  for(let i=0;i<n;i++){
+    if(targets[i]) pos[i].lerp(targets[i], bridgeCoeff);
+  }
+
+  // в) релаксация — расталкиваем слишком близкие звёзды.
+  // между разными категориями держим чуть больший зазор, чтобы
+  // кластеры не сливались в одну точку даже при сильном мостике.
+  const minDistSame = 5.2, minDistCross = 9.0;
+  for(let iter=0; iter<46; iter++){
+    for(let i=0;i<n;i++){
+      for(let j=i+1;j<n;j++){
+        const a = pos[i], b = pos[j];
+        const minDist = (data[i].category===data[j].category) ? minDistSame : minDistCross;
+        const d = a.distanceTo(b);
+        if(d < minDist && d > 0.0001){
+          const push = (minDist - d) * 0.5;
+          const dir = a.clone().sub(b).normalize().multiplyScalar(push);
+          a.add(dir);
+          b.sub(dir);
+        }
+      }
+    }
+  }
+
+  // ограничиваем объём заполнения сферой (с запасом до стекла)
+  pos.forEach(p=>{
+    const r = p.length();
+    if(r > FILL_R) p.multiplyScalar(FILL_R/r);
+  });
+
+  return pos;
+}
+
+const positions = generatePositions(DATA);
+DATA.forEach((d,i)=>{ d.pos = positions[i]; });
+
+// связи для карточки/созвездий — по смысловой близости (категория + общие
+// теги-способности), а не только по итоговой геометрии. Поэтому у
+// чат-модели с навыком кода в соседях честно появится Cursor и т.п.
+function buildNeighbors(data, k=5){
+  data.forEach((d,i)=>{
+    const scored = data
+      .filter(o=>o.id!==d.id)
+      .map(o=>{
+        let score = (o.category===d.category) ? 4 : 0;
+        score += d.tags.filter(t=>o.tags.includes(t)).length * 3;
+        return { o, score, dist: d.pos.distanceTo(o.pos) };
+      })
+      .sort((a,b)=> (b.score-a.score) || (a.dist-b.dist))
+      .slice(0,k);
+    d.neighbors = scored.map(x=>x.o.id);
+  });
+}
+buildNeighbors(DATA);
+
+/* ============================================================
+   3. СЦЕНА
+   ============================================================ */
+
+const wrap = document.getElementById("canvas-wrap");
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2000);
+camera.position.set(0, 15, 182);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+wrap.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 26;
+controls.maxDistance = 330;
+controls.rotateSpeed = 0.55;
+controls.zoomSpeed = 0.7;
+controls.panSpeed = 0.5;
+
+const universe = new THREE.Group();
+scene.add(universe);
+
+/* ---- стеклянная сфера ---- */
+const sphereGeo = new THREE.SphereGeometry(SPHERE_R, 48, 32);
+const sphereMat = new THREE.MeshBasicMaterial({
+  color: 0x8fb4ff, transparent:true, opacity:0.045,
+  side: THREE.BackSide, depthWrite:false,
+});
+const glassSphere = new THREE.Mesh(sphereGeo, sphereMat);
+universe.add(glassSphere);
+
+const wireGeo = new THREE.SphereGeometry(SPHERE_R, 24, 16);
+const wireMat = new THREE.MeshBasicMaterial({
+  color: 0x6fa8ff, wireframe:true, transparent:true, opacity:0.035, depthWrite:false,
+});
+universe.add(new THREE.Mesh(wireGeo, wireMat));
+
+/* ---- туманности по категориям: мягкая цветная подсветка зоны кластера ---- */
+function makeNebulaTexture(){
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const grad = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  grad.addColorStop(0, "rgba(255,255,255,0.9)");
+  grad.addColorStop(0.4, "rgba(255,255,255,0.3)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(canvas);
+}
+const nebulaTexture = makeNebulaTexture();
+const nebulaSprites = [];
+const nebulaGroup = new THREE.Group();
+catKeys.forEach((key)=>{
+  const center = catDirs[key].clone().multiplyScalar(catRadius[key]);
+  for(let p=0;p<4;p++){
+    const mat = new THREE.SpriteMaterial({
+      map: nebulaTexture,
+      color: CATEGORIES[key].color,
+      transparent: true,
+      opacity: 0.055 + rand()*0.03,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    const size = 55 + rand()*55;
+    sprite.scale.set(size, size, 1);
+    sprite.position.copy(center).add(randomInBall(catRadius[key]*0.3 + 10));
+    sprite.renderOrder = -5;
+    sprite.userData.category = key;
+    sprite.userData.baseOpacity = mat.opacity;
+    nebulaGroup.add(sprite);
+    nebulaSprites.push(sprite);
+  }
+});
+universe.add(nebulaGroup);
+
+/* ---- фоновое звёздное поле (атмосфера) ---- */
+function makeDotTexture(){
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const grad = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.55)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(canvas);
+}
+const dotTexture = makeDotTexture();
+
+const bgCount = 1400;
+const bgPos = new Float32Array(bgCount*3);
+for(let i=0;i<bgCount;i++){
+  const r = SPHERE_R*1.15 + rand()*260;
+  const theta = rand()*Math.PI*2;
+  const phi = Math.acos(2*rand()-1);
+  bgPos[i*3]   = r*Math.sin(phi)*Math.cos(theta);
+  bgPos[i*3+1] = r*Math.sin(phi)*Math.sin(theta);
+  bgPos[i*3+2] = r*Math.cos(phi);
+}
+const bgGeo = new THREE.BufferGeometry();
+bgGeo.setAttribute("position", new THREE.BufferAttribute(bgPos,3));
+const bgMat = new THREE.PointsMaterial({
+  size: 1.4, map: dotTexture, transparent:true, opacity:0.5,
+  depthWrite:false, sizeAttenuation:true, color: 0x9fb6ff,
+});
+const bgStars = new THREE.Points(bgGeo, bgMat);
+scene.add(bgStars);
+
+/* ---- звёзды-нейронки: shader points (core + halo) ---- */
+const N = DATA.length;
+const posArr = new Float32Array(N*3);
+const colArr = new Float32Array(N*3);
+const sizeArr = new Float32Array(N);
+const dimArr = new Float32Array(N);
+
+const tmpColor = new THREE.Color();
+const twinklePhase = new Float32Array(N);
+const twinkleSpeed = new Float32Array(N);
+DATA.forEach((d,i)=>{
+  posArr[i*3]   = d.pos.x;
+  posArr[i*3+1] = d.pos.y;
+  posArr[i*3+2] = d.pos.z;
+  tmpColor.setHex(CATEGORIES[d.category].color);
+  colArr[i*3] = tmpColor.r; colArr[i*3+1] = tmpColor.g; colArr[i*3+2] = tmpColor.b;
+  sizeArr[i] = 5 + Math.sqrt(d.popularity)*1.7;
+  dimArr[i] = 1.0;
+  twinklePhase[i] = rand()*Math.PI*2;
+  twinkleSpeed[i] = 0.5 + rand()*1.1;
+});
+
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute("position", new THREE.BufferAttribute(posArr,3));
+starGeo.setAttribute("color", new THREE.BufferAttribute(colArr,3));
+starGeo.setAttribute("size", new THREE.BufferAttribute(sizeArr,1));
+starGeo.setAttribute("dim", new THREE.BufferAttribute(dimArr,1));
+starGeo.setAttribute("twinklePhase", new THREE.BufferAttribute(twinklePhase,1));
+starGeo.setAttribute("twinkleSpeed", new THREE.BufferAttribute(twinkleSpeed,1));
+
+const vertexShader = `
+  attribute float size;
+  attribute float dim;
+  attribute vec3 color;
+  attribute float twinklePhase;
+  attribute float twinkleSpeed;
+  varying vec3 vColor;
+  varying float vDim;
+  varying float vTwinkle;
+  uniform float uScale;
+  uniform float uTime;
+  void main(){
+    vColor = color;
+    vDim = dim;
+    vTwinkle = 0.78 + 0.22 * sin(uTime * twinkleSpeed + twinklePhase);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * uScale * (300.0 / -mvPosition.z);
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+const fragmentShaderCore = `
+  uniform sampler2D pointTexture;
+  varying vec3 vColor;
+  varying float vDim;
+  varying float vTwinkle;
+  void main(){
+    vec4 tex = texture2D(pointTexture, gl_PointCoord);
+    float a = tex.a * (0.35 + 0.65*vDim) * vTwinkle;
+    gl_FragColor = vec4(vColor * (0.6 + 0.4*vDim) + vec3(0.5,0.55,0.6)*tex.r*0.5, a);
+  }
+`;
+const fragmentShaderHalo = `
+  uniform sampler2D pointTexture;
+  varying vec3 vColor;
+  varying float vDim;
+  varying float vTwinkle;
+  void main(){
+    vec4 tex = texture2D(pointTexture, gl_PointCoord);
+    float a = tex.a * 0.45 * vDim * vTwinkle;
+    gl_FragColor = vec4(vColor, a);
+  }
+`;
+
+// подсветка при наведении/выборе делается DOM-подписью (.active),
+// сами звёзды-точки на ховере размер не меняют — отдельный uniform не нужен
+function makeStarMaterial(fragShader, sizeMult){
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      pointTexture: { value: dotTexture },
+      uScale: { value: sizeMult },
+      uTime: { value: 0 },
+    },
+    vertexShader, fragmentShader: fragShader,
+    transparent:true, depthWrite:false,
+    blending: sizeMult > 1.6 ? THREE.AdditiveBlending : THREE.NormalBlending,
+  });
+}
+
+const haloMat = makeStarMaterial(fragmentShaderHalo, 3.4);
+const coreMat = makeStarMaterial(fragmentShaderCore, 1.0);
+
+const haloPoints = new THREE.Points(starGeo, haloMat);
+const corePoints = new THREE.Points(starGeo, coreMat);
+universe.add(haloPoints);
+universe.add(corePoints);
+
+/* ---- линии связей (созвездия при выборе) ---- */
+const lineGeo = new THREE.BufferGeometry();
+const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.45 });
+const linkLines = new THREE.LineSegments(lineGeo, lineMat);
+universe.add(linkLines);
+
+function setLinkLines(centerIdx, neighborIdxs, color){
+  const pts = [];
+  const c = DATA[centerIdx].pos;
+  neighborIdxs.forEach(ni=>{
+    const p = DATA[ni].pos;
+    pts.push(c.x,c.y,c.z, p.x,p.y,p.z);
+  });
+  lineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pts), 3));
+  lineMat.color.setHex(color);
+}
+function clearLinkLines(){
+  lineGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(0), 3));
+}
+linkLines.renderOrder = -1;
+
+/* ---- постоянные тонкие созвездия: связи внутри своей категории,
+   видны всегда (в отличие от ярких linkLines, которые загораются
+   только при выборе звезды и могут вести в другую категорию) ---- */
+function buildConstellationEdges(data, k=2){
+  const edges = [];
+  const seen = new Set();
+  data.forEach((d,i)=>{
+    data
+      .map((o,j)=>({ j, dist: d.pos.distanceTo(o.pos) }))
+      .filter(x=> x.j!==i && data[x.j].category===d.category)
+      .sort((a,b)=>a.dist-b.dist)
+      .slice(0,k)
+      .forEach(c=>{
+        const key = i<c.j ? i+"_"+c.j : c.j+"_"+i;
+        if(!seen.has(key)){ seen.add(key); edges.push([i, c.j]); }
+      });
+  });
+  return edges;
+}
+const constellationEdges = buildConstellationEdges(DATA, 2);
+
+const constGeo = new THREE.BufferGeometry();
+const constPosArr = new Float32Array(constellationEdges.length*6);
+const constColorBase = new Float32Array(constellationEdges.length*6);
+const constColorArr = new Float32Array(constellationEdges.length*6);
+const constEdgeCategory = [];
+const tmpC2 = new THREE.Color();
+constellationEdges.forEach(([i,j], e)=>{
+  const a = DATA[i].pos, b = DATA[j].pos;
+  constPosArr.set([a.x,a.y,a.z, b.x,b.y,b.z], e*6);
+  tmpC2.setHex(CATEGORIES[DATA[i].category].color);
+  constColorBase.set([tmpC2.r,tmpC2.g,tmpC2.b, tmpC2.r,tmpC2.g,tmpC2.b], e*6);
+  constEdgeCategory.push(DATA[i].category);
+});
+constColorArr.set(constColorBase);
+constGeo.setAttribute("position", new THREE.BufferAttribute(constPosArr,3));
+constGeo.setAttribute("color", new THREE.BufferAttribute(constColorArr,3));
+const constMat = new THREE.LineBasicMaterial({ vertexColors:true, transparent:true, opacity:0.18, depthWrite:false });
+const constellationLines = new THREE.LineSegments(constGeo, constMat);
+constellationLines.renderOrder = -2;
+universe.add(constellationLines);
+
+function updateConstellationDim(){
+  for(let e=0;e<constEdgeCategory.length;e++){
+    const dimMul = (!activeFilter || constEdgeCategory[e]===activeFilter) ? 1 : 0.06;
+    const base = e*6;
+    for(let v=0; v<2; v++){
+      constColorArr[base+v*3+0] = constColorBase[base+v*3+0]*dimMul;
+      constColorArr[base+v*3+1] = constColorBase[base+v*3+1]*dimMul;
+      constColorArr[base+v*3+2] = constColorBase[base+v*3+2]*dimMul;
+    }
+  }
+  constGeo.attributes.color.needsUpdate = true;
+}
+
+/* ============================================================
+   4. ЛЕГЕНДА
+   ============================================================ */
+const legendEl = document.getElementById("legend");
+let activeFilter = null;
+
+function rebuildLegend(){
+  legendEl.innerHTML = "";
+  catKeys.forEach((key)=>{
+    const cat = CATEGORIES[key];
+    const count = DATA.filter(d=>d.category===key).length;
+    const item = document.createElement("div");
+    item.className = "legend-item" + (activeFilter===key ? " active" : "");
+    item.style.setProperty("color", activeFilter===key ? "#fff" : "");
+    const hex = "#" + cat.color.toString(16).padStart(6,"0");
+    item.innerHTML = `<span class="legend-swatch" style="background:${hex}; color:${hex}"></span>
+                       <span>${cat.label}</span><span class="legend-count">${count}</span>`;
+    item.addEventListener("click", ()=>{
+      activeFilter = (activeFilter===key) ? null : key;
+      applyFilter();
+      rebuildLegend();
+    });
+    legendEl.appendChild(item);
+  });
+}
+rebuildLegend();
+
+function applyFilter(){
+  for(let i=0;i<N;i++){
+    const visible = !activeFilter || DATA[i].category === activeFilter;
+    dimArr[i] = visible ? 1.0 : 0.12;
+  }
+  starGeo.attributes.dim.needsUpdate = true;
+  updateConstellationDim();
+  nebulaSprites.forEach(s=>{
+    const visible = !activeFilter || s.userData.category === activeFilter;
+    s.material.opacity = visible ? s.userData.baseOpacity : s.userData.baseOpacity*0.08;
+  });
+}
+
+/* ============================================================
+   5. ПОДСВЕТКА / ВЫБОР / КАРТОЧКА
+   ============================================================ */
+const panel = document.getElementById("panel");
+const panelClose = document.getElementById("panel-close");
+const panelCatText = document.getElementById("panel-cat-text");
+const panelCatSwatch = panel.querySelector("#panel-cat-badge .legend-swatch");
+const panelName = document.getElementById("panel-name");
+const panelTags = document.getElementById("panel-tags");
+const panelNeighbors = document.getElementById("panel-neighbors");
+const panelPopFill = document.getElementById("panel-pop-fill");
+
+// тонкие подписи у каждой звезды, как в атласах созвездий —
+// создаются один раз, дальше только двигаются/тускнеют
+const labelLayer = document.getElementById("label-layer");
+const starLabels = DATA.map((d)=>{
+  const el = document.createElement("div");
+  el.className = "star-label";
+  el.style.fontSize = (9 + Math.sqrt(d.popularity)*0.32).toFixed(1) + "px";
+  el.innerHTML = `<span class="lbl-name">${d.name}</span><span class="lbl-cat">${CATEGORIES[d.category].label}</span>`;
+  labelLayer.appendChild(el);
+  return el;
+});
+
+let hoveredIdx = -1;
+let selectedIdx = -1;
+
+function hexOf(catKey){ return "#" + CATEGORIES[catKey].color.toString(16).padStart(6,"0"); }
+
+function showPanel(idx){
+  const d = DATA[idx];
+  const hex = hexOf(d.category);
+  panelCatText.textContent = CATEGORIES[d.category].label;
+  panelCatSwatch.style.background = hex;
+  panelCatSwatch.style.color = hex;
+  panelName.textContent = d.name;
+  panelName.style.color = "#fff";
+  panelTags.innerHTML = d.tags.map(t=>`<span class="tag-chip">${t}</span>`).join("");
+  panelPopFill.style.width = d.popularity + "%";
+  panelPopFill.style.background = hex;
+  panelNeighbors.innerHTML = "";
+  d.neighbors.forEach(ni=>{
+    const nb = DATA[ni];
+    const nhex = hexOf(nb.category);
+    const row = document.createElement("div");
+    row.className = "neighbor-item";
+    row.innerHTML = `<span class="legend-swatch" style="background:${nhex};color:${nhex}"></span><span>${nb.name}</span>`;
+    row.addEventListener("click", ()=> selectStar(ni, true));
+    panelNeighbors.appendChild(row);
+  });
+  panel.classList.add("show");
+}
+function hidePanel(){ panel.classList.remove("show"); }
+panelClose.addEventListener("click", ()=> deselect());
+
+function selectStar(idx, flyCamera){
+  selectedIdx = idx;
+  const d = DATA[idx];
+  for(let i=0;i<N;i++){
+    const related = i===idx || d.neighbors.includes(i);
+    dimArr[i] = related ? 1.0 : 0.1;
+  }
+  starGeo.attributes.dim.needsUpdate = true;
+  setLinkLines(idx, d.neighbors, CATEGORIES[d.category].color);
+  showPanel(idx);
+  if(flyCamera) flyTo(idx);
+}
+function deselect(){
+  selectedIdx = -1;
+  applyFilter();
+  clearLinkLines();
+  hidePanel();
+}
+
+/* ---- screen-space picking (без неточного raycast на Points) ---- */
+const raySprite = new THREE.Vector3();
+function projectToScreen(v3, out){
+  raySprite.copy(v3).applyMatrix4(universe.matrixWorld).project(camera);
+  out.x = (raySprite.x*0.5+0.5) * renderer.domElement.clientWidth;
+  out.y = (-raySprite.y*0.5+0.5) * renderer.domElement.clientHeight;
+  return raySprite.z < 1; // в кадре
+}
+
+const screenPts = DATA.map(()=>({x:0,y:0}));
+const frontFlags = new Uint8Array(N);
+const mouse = { x:-9999, y:-9999 };
+let pointerDown = false, pointerMoved = false;
+
+function pickNearest(px, py){
+  let best = -1, bestDist = 1e9;
+  for(let i=0;i<N;i++){
+    const inFront = projectToScreen(DATA[i].pos, screenPts[i]);
+    frontFlags[i] = inFront ? 1 : 0;
+    if(!inFront) continue;
+    const dx = screenPts[i].x - px, dy = screenPts[i].y - py;
+    const dist = dx*dx+dy*dy;
+    const r = (sizeArr[i]*1.4 + 6);
+    if(dist < r*r && dist < bestDist){ bestDist = dist; best = i; }
+  }
+  return best;
+}
+
+renderer.domElement.addEventListener("pointerdown", ()=>{ pointerDown=true; pointerMoved=false; });
+renderer.domElement.addEventListener("pointermove", (e)=>{
+  if(pointerDown) pointerMoved = true;
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+renderer.domElement.addEventListener("pointerup", (e)=>{
+  pointerDown = false;
+  if(pointerMoved) return; // это было вращение, не клик
+  const idx = pickNearest(e.clientX, e.clientY);
+  if(idx >= 0){ selectStar(idx, false); }
+  else { deselect(); }
+});
+renderer.domElement.addEventListener("pointerleave", ()=>{ mouse.x=-9999; mouse.y=-9999; hoveredIdx=-1; });
+
+function updateHover(){
+  const idx = pickNearest(mouse.x, mouse.y);
+  if(idx !== hoveredIdx){
+    hoveredIdx = idx;
+    renderer.domElement.style.cursor = idx>=0 ? "pointer" : "grab";
+  }
+}
+
+// двигаем и тускнят/высвечивают подписи звёзд — переиспользуем
+// screenPts/frontFlags, которые только что обновил pickNearest
+const distScratch = new THREE.Vector3();
+function updateLabels(){
+  // звезда, которая сейчас ближе всего к центру экрана — "та, на которую смотрит пользователь"
+  const cx = window.innerWidth/2, cy = window.innerHeight/2;
+  const focusRadius = Math.min(window.innerWidth, window.innerHeight) * 0.08;
+  let centerIdx = -1, bestD2 = focusRadius*focusRadius;
+  for(let i=0;i<N;i++){
+    if(!frontFlags[i]) continue;
+    const dx = screenPts[i].x - cx, dy = screenPts[i].y - cy;
+    const d2 = dx*dx + dy*dy;
+    if(d2 < bestD2){ bestD2 = d2; centerIdx = i; }
+  }
+
+  for(let i=0;i<N;i++){
+    const el = starLabels[i];
+    if(!frontFlags[i]){ el.style.opacity = 0; continue; }
+
+    distScratch.copy(DATA[i].pos).applyMatrix4(universe.matrixWorld);
+    const camDist = camera.position.distanceTo(distScratch);
+    const fade = THREE.MathUtils.clamp((300 - camDist) / 220, 0.16, 1);
+
+    const isActive = (i === hoveredIdx || i === selectedIdx || i === centerIdx);
+    el.classList.toggle("active", isActive);
+
+    const opacity = isActive ? 1 : fade * dimArr[i] * 0.82;
+    el.style.opacity = opacity.toFixed(2);
+    el.style.transform = `translate(${(screenPts[i].x+8).toFixed(1)}px, ${(screenPts[i].y-6).toFixed(1)}px)`;
+  }
+}
+
+/* ============================================================
+   6. ПОЛЁТ КАМЕРЫ К ЗВЕЗДЕ + ПОИСК
+   ============================================================ */
+let flying = null;
+function flyTo(idx){
+  const target = DATA[idx].pos.clone();
+  const dir = target.clone().normalize();
+  const camTarget = target.clone().add(dir.clone().multiplyScalar(26));
+  flying = {
+    t: 0, dur: 1.15,
+    fromPos: camera.position.clone(),
+    toPos: camTarget,
+    fromTarget: controls.target.clone(),
+    toTarget: target,
+  };
+}
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
+function updateFlight(dt){
+  if(!flying) return;
+  flying.t += dt;
+  const k = Math.min(flying.t/flying.dur, 1);
+  const e = easeInOutCubic(k);
+  camera.position.lerpVectors(flying.fromPos, flying.toPos, e);
+  controls.target.lerpVectors(flying.fromTarget, flying.toTarget, e);
+  if(k>=1) flying = null;
+}
+
+const searchInput = document.getElementById("search");
+const suggestions = document.getElementById("suggestions");
+
+function renderSuggestions(list){
+  if(list.length===0){ suggestions.classList.remove("show"); suggestions.innerHTML=""; return; }
+  suggestions.innerHTML = list.slice(0,7).map(d=>{
+    const hex = hexOf(d.category);
+    return `<div class="sugg-item" data-id="${d.id}">
+      <span class="dot" style="background:${hex}"></span>
+      <span class="sugg-name">${d.name}</span>
+      <span class="sugg-cat">${CATEGORIES[d.category].label}</span>
+    </div>`;
+  }).join("");
+  suggestions.classList.add("show");
+  suggestions.querySelectorAll(".sugg-item").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const id = parseInt(el.getAttribute("data-id"));
+      selectStar(id, true);
+      searchInput.value = DATA[id].name;
+      suggestions.classList.remove("show");
+      searchInput.blur();
+    });
+  });
+}
+searchInput.addEventListener("input", ()=>{
+  const q = searchInput.value.trim().toLowerCase();
+  if(!q){ renderSuggestions([]); return; }
+  const matches = DATA.filter(d=> d.name.toLowerCase().includes(q) || d.tags.some(t=>t.includes(q)));
+  renderSuggestions(matches);
+});
+searchInput.addEventListener("focus", ()=>{ if(searchInput.value.trim()) searchInput.dispatchEvent(new Event("input")); });
+document.addEventListener("click", (e)=>{
+  if(!document.getElementById("search-wrap").contains(e.target)) suggestions.classList.remove("show");
+});
+
+/* ============================================================
+   7. RESIZE / АНИМАЦИЯ
+   ============================================================ */
+window.addEventListener("resize", ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+let idleTimer = 0;
+controls.addEventListener("change", ()=>{ idleTimer = 0; });
+
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const elapsed = clock.getElapsedTime();
+  haloMat.uniforms.uTime.value = elapsed;
+  coreMat.uniforms.uTime.value = elapsed;
+
+  updateFlight(dt);
+  controls.update();
+  updateHover();
+  updateLabels();
+
+  // мягкое автовращение и фон, когда пользователь не взаимодействует
+  idleTimer += dt;
+  if(idleTimer > 2.2 && !flying){
+    universe.rotation.y += dt * 0.018;
+  }
+  bgStars.rotation.y += dt * 0.004;
+
+  renderer.render(scene, camera);
+}
+
+/* старт */
+window.addEventListener("load", ()=>{
+  const loading = document.getElementById("loading");
+  loading.style.opacity = "0";
+  setTimeout(()=> loading.remove(), 550);
+});
+applyFilter();
+animate();
+</script>
+</body>
+</html>

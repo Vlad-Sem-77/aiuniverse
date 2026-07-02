@@ -1188,7 +1188,7 @@ document.addEventListener("click", (e)=>{
 });
 
 /* ============================================================
-   7. ПАСХАЛКА: ЛЕТАЮЩИЙ TESLA CYBERTRUCK
+   7. ПАСХАЛКА: КРАСНЫЙ TESLA ROADSTER (Кабриолет)
    ============================================================ */
 const ambientLight = new THREE.AmbientLight(0x404060, 1.5);
 scene.add(ambientLight);
@@ -1198,48 +1198,59 @@ scene.add(dirLight);
 
 const teslaGroup = new THREE.Group();
 
-const matBody = new THREE.MeshStandardMaterial({ color: 0xd0d0d0, metalness: 0.9, roughness: 0.2, emissive: 0x222222, transparent: true });
-const matGlass = new THREE.MeshStandardMaterial({ color: 0x111122, metalness: 0.5, roughness: 0.1, transparent: true, opacity: 0.6 });
-const matWheel = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8, transparent: true });
+// Ярко-красный кузов со свечением (emissive), чтобы не сливался с черным фоном
+const matBody = new THREE.MeshStandardMaterial({ color: 0xff1111, metalness: 0.6, roughness: 0.3, emissive: 0x660000, transparent: true });
+const matBlack = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8, transparent: true });
+// Ярко-голубое стекло
+const matGlass = new THREE.MeshStandardMaterial({ color: 0x66ddff, metalness: 0.1, roughness: 0.1, transparent: true, opacity: 0.6 });
+// Маячок - всегда чистый красный (не зависит от света)
+const matBeacon = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true });
 
-const body = new THREE.Mesh(new THREE.BoxGeometry(16, 3, 28), matBody);
-body.position.y = 5;
+// Основной кузов (длинный и низкий)
+const body = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 20), matBody);
+body.position.y = 3;
 teslaGroup.add(body);
 
-const top = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 16), matBody);
-top.position.y = 8.5;
-top.position.x = -3;
-top.rotation.z = -0.15;
-teslaGroup.add(top);
+// Капот (передняя часть, чуть ниже лобового стекла)
+const hood = new THREE.Mesh(new THREE.BoxGeometry(7, 1.5, 6), matBody);
+hood.position.set(0, 3.5, 6);
+teslaGroup.add(hood);
 
-const glass = new THREE.Mesh(new THREE.BoxGeometry(15, 3.5, 17), matGlass);
-glass.position.y = 8.5;
-glass.position.x = -3;
-glass.rotation.z = -0.15;
-teslaGroup.add(glass);
+// Салон (открытый, черный)
+const interior = new THREE.Mesh(new THREE.BoxGeometry(7, 1, 6), matBlack);
+interior.position.set(0, 3.5, -1);
+teslaGroup.add(interior);
 
-const wheelGeo = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 16);
+// Лобовое стекло (наклонное, голубое)
+const windshieldGeo = new THREE.BoxGeometry(7, 3, 0.5);
+const windshield = new THREE.Mesh(windshieldGeo, matGlass);
+windshield.position.set(0, 4.5, 3);
+windshield.rotation.x = -0.4; // Наклон
+teslaGroup.add(windshield);
+
+// Колеса
+const wheelGeo = new THREE.CylinderGeometry(2.5, 2.5, 2, 16);
 const wheelPositions = [
-  [-8, 1.5, 9], [8, 1.5, 9],
-  [-8, 1.5, -9], [8, 1.5, -9]
+  [-5, 1, 6], [5, 1, 6],
+  [-5, 1, -6], [5, 1, -6]
 ];
 wheelPositions.forEach(pos => {
-  const wheel = new THREE.Mesh(wheelGeo, matWheel);
+  const wheel = new THREE.Mesh(wheelGeo, matBlack);
   wheel.rotation.x = Math.PI / 2;
-  wheel.position.set(...pos);
+  wheel.position.set(pos[0], pos[1], pos[2]);
   teslaGroup.add(wheel);
 });
 
-const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true });
-const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), beaconMat);
-beacon.position.set(0, 6, -14);
+// Маячок (стоп-сигнал) - крупный, на самом краю багажника
+const beacon = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), matBeacon);
+beacon.position.set(0, 4, -10);
 teslaGroup.add(beacon);
 
-const beaconLight = new THREE.PointLight(0xff0000, 2, 50);
-beaconLight.position.set(0, 6, -14);
+const beaconLight = new THREE.PointLight(0xff0000, 5, 30);
+beaconLight.position.set(0, 4, -10);
 teslaGroup.add(beaconLight);
 
-// Уменьшенный масштаб в 2 раза (было 0.4, стало 0.2)
+// Уменьшенный масштаб
 teslaGroup.scale.set(0.2, 0.2, 0.2);
 
 const teslaStartPos = new THREE.Vector3(-90, -90, -180);
@@ -1300,11 +1311,14 @@ function animate(){
       if (obj.material) {
         let base = 1.0;
         if (obj.material === matGlass) base = 0.6;
-        if (obj.material === beaconMat) base = 1.0;
+        if (obj.material === matBeacon) base = 1.0;
         obj.material.opacity = visibility * base;
       }
     });
-    beaconMat.opacity = visibility * ((Math.sin(elapsed * 5) > 0) ? 1 : 0.3);
+    // Жесткое мигание маячка: либо горит, либо выключен
+    const blink = Math.sin(elapsed * 6) > 0;
+    matBeacon.opacity = blink ? visibility : 0.0;
+    beaconLight.intensity = blink ? 5.0 : 0.0;
   }
 
   renderer.render(scene, camera);
